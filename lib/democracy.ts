@@ -4,51 +4,100 @@
  * http://goldfirestudios.com
  */
 
-const shortid = require('shortid');
-const dgram = require('dgram');
-const {EventEmitter} = require('events');
-const {StringDecoder} = require('string_decoder');
+import shortid from 'shortid';
+import { createSocket, Socket } from 'dgram';
+import { EventEmitter } from  'events';
+import { StringDecoder } from  'string_decoder';
 
 // Create the string decoder.
 const decoder = new StringDecoder('utf8');
+
+type NodeAddress = string; // Example: 0.0.0.0:12345
+type NodeId = string;
+type NodeState = 'removed' | 'citizen' | 'leader';
+
+type NodeInfo = {
+  id: NodeId,
+  weight: number,
+  state: NodeState,
+  channels: Array<string>,
+  last: number, // ms timestamp
+  voters: Array<NodeId>,
+  source: NodeAddress,
+  disconnected?: NodeJS.Timer,
+}
+
+type NodeInfoMap = { [id: NodeId]: NodeInfo };
+
+type AddressTuple = [ domain: string, port: number];
+
+type DemocracyOptions = {
+  interval?: number,
+  timeout?: number,
+  maxPacketSize?: number,
+  source?: NodeAddress,
+  peers?: Array<NodeAddress>,
+  weight?: number
+  id?: NodeId,
+  channels?: Array<string>
+}
+type DemocracyDefaultedOptions = {
+  interval: number,
+  timeout: number,
+  maxPacketSize: number,
+  source: AddressTuple,
+  peers: Array<AddressTuple>,
+  weight: number
+  id: NodeId,
+  channels: Array<string>
+}
+
+
+type SendExtra = { candidate?: string, channel?: string };
 
 /**
  * Setup the base Democracy class that handles all of the methods.
  */
 class Democracy extends EventEmitter {
+  private _nodes: NodeInfoMap;
+  private _id: NodeId;
+  private _weight: number;
+  private _state: NodeState;
+  private _chunks: Object; // TODO: specify
+  private _hadElection: boolean
+
+  options: DemocracyDefaultedOptions;
+  socket: Socket;
+
   /**
    * Initialize a new democracy with the given options.
    * @param  {Object} options User-defined options.
    */
-  constructor(options = {}) {
+  constructor(options: DemocracyOptions = {}) {
     super();
 
     this._nodes = {};
     this._chunks = {};
+    this._hadElection = false;
+
+    // Remove the source from the peers.
+    const sourceIndex = options.peers.indexOf(options.source);
+    if (sourceIndex >= 0) {
+      options.peers.splice(sourceIndex, 1);
+    }
 
     // Merge the passed options with the defaults.
     this.options = {
       interval: options.interval || 1000,
       timeout: options.timeout || 3000,
       maxPacketSize: options.maxPacketSize || 508,
-      source: options.source || '0.0.0.0:12345',
-      peers: options.peers || [],
+      source: this._parseAddress(options.source || '0.0.0.0:12345'),
+      peers: (options.peers || []).map(a => this._parseAddress(a)),
       weight: options.weight || Math.random() * Date.now(),
       id: options.id || shortid.generate(),
       channels: options.channels || [],
     };
 
-    // Remove the source from the peers.
-    const sourceIndex = this.options.peers.indexOf(this.options.source);
-    if (sourceIndex >= 0) {
-      this.options.peers.splice(sourceIndex, 1);
-    }
-
-    // Better format the source and peers for speed.
-    this.options.source = this.options.source.split(':');
-    for (let i = 0; i < this.options.peers.length; i += 1) {
-      this.options.peers[i] = this.options.peers[i].split(':');
-    }
 
     // Generate the details about this node to be sent between nodes.
     this._id = this.options.id;
@@ -56,16 +105,27 @@ class Democracy extends EventEmitter {
     this._state = 'citizen';
 
     // Setup the UDP socket to listen on.
-    this.socket = dgram.createSocket({type: 'udp4', reuseAddr: true});
+    this.socket = createSocket({type: 'udp4', reuseAddr: true});
 
     this.start();
+  }
+
+  private _parseAddress(address: NodeAddress): AddressTuple {
+    const parts: Array<string> = address.split(':');
+
+    if (parts.length !== 2) {
+      // TODO: hide behind strict flag?
+      throw new Error('Peers and sources are expected to be in the format of <ip>:<port>');
+    }
+
+    return [parts[0], Number(parts[1])];
   }
 
   /**
    * Start the democratic process by binding to the UDP port and holding the first election.
    * @return {Democracy}
    */
-  start() {
+  start(): this {
     // Bind to the UDP port and begin listeneing for hello, etc messages.
     this.socket.bind(this.options.source[1], this.options.source[0], () => {
       // Listen for messages on this port.
@@ -99,7 +159,7 @@ class Democracy extends EventEmitter {
    * Run the `hello` interval to send out the heartbeats.
    * @return {Democracy}
    */
-  hello() {
+  hello(): this {
     // Send a hello message and then check the other nodes.
     const sendHello = () => {
       this.send('hello');
@@ -121,8 +181,22 @@ class Democracy extends EventEmitter {
    * @param  {Object} extra Other data to send.
    * @return {Democracy}
    */
-  send(event, extra, id) {
-    const data = {event, id: this._id};
+  send(event: string, extra?: SendExtra, id?: NodeId): this {
+    type Payload = {
+      event: string,
+      id: NodeId,
+      source: NodeAddress
+      candidate?: string,
+      weight?: number,
+      state?: NodeState,
+      channels?: Array<string>,
+      extra?: SendExtra
+    }
+    const data: Payload = {
+      event,
+      id: this._id,
+      source: `${this.options.source[0]}:${this.options.source[1]}`
+    };
 
     if (event === 'vote') {
       data.candidate = extra.candidate;
@@ -136,8 +210,6 @@ class Democracy extends EventEmitter {
         data.extra = extra;
       }
     }
-
-    data.source = `${this.options.source[0]}:${this.options.source[1]}`;
 
     // Adjust the max size by the max size of the chunk wrapper data.
     const maxSize = this.options.maxPacketSize;
@@ -181,7 +253,7 @@ class Democracy extends EventEmitter {
    * After sending a `hello`, check if any of the other nodes are down.
    * @return {Democracy}
    */
-  check() {
+  check(): this {
     Object.keys(this._nodes).forEach((id) => {
       if (this._nodes[id] && this._nodes[id].last + this.options.timeout < Date.now()) {
         // Increment the vote count.
@@ -203,7 +275,7 @@ class Democracy extends EventEmitter {
    * @param  {String} channel Channel name (can't be 'hello', 'vote', 'leader', or 'subscribe').
    * @return {Democracy}
    */
-  subscribe(channel) {
+  subscribe(channel): this {
     // Add the channel to this node.
     this.options.channels.push(channel);
 
@@ -219,7 +291,7 @@ class Democracy extends EventEmitter {
    * @param  {Mixed} msg     Data to send.
    * @return {Democracy}
    */
-  publish(channel, msg) {
+  publish(channel, msg): this {
     // Loop through all nodes and send the message to ones that are subscribed.
     const ids = Object.keys(this._nodes);
     for (let i = 0; i < ids.length; i += 1) {
@@ -237,7 +309,7 @@ class Democracy extends EventEmitter {
    * @param {data} data Node data to setup.
    * @return {Democracy}
    */
-  addNodeToList(data) {
+  private _addNodeToList(data): this {
     // Add the node to the list.
     this._nodes[data.id] = {
       id: data.id,
@@ -267,7 +339,7 @@ class Democracy extends EventEmitter {
    * @param  {Object} msg Data received.
    * @return {Democracy}
    */
-  processEvent(msg) {
+  processEvent(msg): this {
     const data = this.decodeMsg(msg);
 
     // Check if this is a chunk and put in the store.
@@ -316,7 +388,7 @@ class Democracy extends EventEmitter {
     if (data.event === 'hello') {
       // Create a new node if we don't already know about this one.
       if (!this._nodes[data.id]) {
-        this.addNodeToList(data);
+        this._addNodeToList(data);
       } else {
         const revived = this._nodes[data.id].state === 'removed' && data.state !== 'removed';
         this._nodes[data.id].last = Date.now();
@@ -355,7 +427,7 @@ class Democracy extends EventEmitter {
       }
     } else if (data.event === 'leader') {
       if (!this._nodes[data.id]) {
-        this.addNodeToList(data);
+        this._addNodeToList(data);
       } else {
         this._nodes[data.id].state = 'leader';
       }
@@ -363,7 +435,7 @@ class Democracy extends EventEmitter {
       this.emit('leader', this._nodes[data.id]);
     } else if (data.event === 'subscribe') {
       if (!this._nodes[data.id]) {
-        this.addNodeToList(data);
+        this._addNodeToList(data);
       } else {
         this._nodes[data.id].channels.push(data.extra.channel);
       }
@@ -380,13 +452,13 @@ class Democracy extends EventEmitter {
    * @param  {String} candidate ID of the candidate to be removed.
    * @return {Democracy}
    */
-  checkBallots(candidate) {
+  checkBallots(candidate): this {
     const node = this._nodes[candidate];
     const {state} = node;
     let numVoters = 0;
 
     // Count the number of voters that haven't been marked for election.
-    for (let i = 0; i < this._nodes.length; i += 1) {
+    for (let i = 0; i < Object.keys(this._nodes).length; i += 1) {
       if (this._nodes[i] && !this._nodes[i].voters.length) {
         numVoters += 1;
       }
@@ -409,7 +481,7 @@ class Democracy extends EventEmitter {
         }
 
         // Remove from the nodes/peers.
-        const source = node.source.split(':');
+        const source = this._parseAddress(node.source);
         const index = this.options.peers.findIndex(p => p[0] === source[0] && p[1] === source[1]);
         if (index >= 0) {
           this.options.peers.splice(index, 1);
@@ -429,7 +501,7 @@ class Democracy extends EventEmitter {
    * Hold an election for a new leader.
    * @return {Democracy}
    */
-  holdElections() {
+  holdElections(): this {
     const nodes = this.nodes();
     let highestWeight = 0;
     let newLeader;
@@ -471,7 +543,7 @@ class Democracy extends EventEmitter {
    * which could result in this same node becoming leader again (as is the way of the world).
    * @return {Democracy}
    */
-  resign() {
+  resign(): this {
     const nodes = this.nodes();
 
     if (this._state === 'leader') {
@@ -487,7 +559,7 @@ class Democracy extends EventEmitter {
    * Get the list of current nodes, including this one.
    * @return {Object} All nodes.
    */
-  nodes() {
+  nodes(): NodeInfoMap {
     const nodes = {};
 
     // Copy the nodes data to return.
@@ -512,6 +584,8 @@ class Democracy extends EventEmitter {
       weight: this._weight,
       state: this._state,
       channels: this.options.channels,
+      voters: [], // Empty because we can't know if we're being voted out // TODO: Check if true
+      source: this.options.source,
     };
 
     return nodes;
@@ -521,7 +595,7 @@ class Democracy extends EventEmitter {
    * Find our current fearless leader.
    * @return {Object} Current leader.
    */
-  leader() {
+  leader(): NodeInfo {
     const nodes = this.nodes();
     let leader = null;
 
@@ -538,7 +612,7 @@ class Democracy extends EventEmitter {
    * Check if the current server is the leader or not.
    * @return {Boolean} True if this is the leader.
    */
-  isLeader() {
+  isLeader(): boolean {
     const leader = this.leader();
 
     return leader ? this._id === leader.id : false;
@@ -549,7 +623,7 @@ class Democracy extends EventEmitter {
    * @param  {Buffer} msg Received data.
    * @return {Object}     Parsed data.
    */
-  decodeMsg(msg) {
+  decodeMsg(msg): any {
     try {
       return JSON.parse(decoder.write(msg));
     } catch (e) {
@@ -558,4 +632,4 @@ class Democracy extends EventEmitter {
   }
 }
 
-module.exports = Democracy;
+export default Democracy;

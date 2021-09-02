@@ -20,7 +20,8 @@
     "url": "git://github.com/goldfire/democracy.js.git"
   },
   "scripts": {
-    "release": "VERSION=`printf 'v' && node -e 'console.log(require(\"./package.json\").version)'` && git tag $VERSION && git push && git push origin $VERSION && npm publish"
+    "release": "VERSION=`printf 'v' && node -e 'console.log(require(\"./package.json\").version)'` && git tag $VERSION && git push && git push origin $VERSION && npm publish",
+    "build": "tsc"
   },
   "main": "index.js",
   "license": "MIT",
@@ -28,9 +29,11 @@
     "shortid": "2.2.14"
   },
   "devDependencies": {
+    "@types/node": "^16.7.10",
     "eslint": "5.9.*",
     "eslint-config-airbnb-base": "13.1.*",
-    "eslint-plugin-import": "2.14.*"
+    "eslint-plugin-import": "2.14.*",
+    "typescript": "^4.4.2"
   },
   "engines": [
     "node >= 6.4.0"
