@@ -23,7 +23,8 @@
     "release": "VERSION=`printf 'v' && node -e 'console.log(require(\"./package.json\").version)'` && git tag $VERSION && git push && git push origin $VERSION && npm publish",
     "build": "tsc"
   },
-  "main": "index.js",
+  "main": "./dist/democracy.js",
+  "types": "./dist/democracy.d.ts",
   "license": "MIT",
   "dependencies": {
     "shortid": "2.2.14"

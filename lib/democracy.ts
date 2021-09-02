@@ -71,7 +71,7 @@ class Democracy extends EventEmitter {
 
   /**
    * Initialize a new democracy with the given options.
-   * @param  {Object} options User-defined options.
+   * @param  {DemocracyOptions} options User-defined options.
    */
   constructor(options: DemocracyOptions = {}) {
     super();
@@ -179,6 +179,7 @@ class Democracy extends EventEmitter {
    * Send a message to the other peers.
    * @param  {String} event 'hello', 'vote', etc.
    * @param  {Object} extra Other data to send.
+   * @param  {NodeId} Optionally specify a specific recipient by node id
    * @return {Democracy}
    */
   send(event: string, extra?: SendExtra, id?: NodeId): this {
@@ -275,7 +276,8 @@ class Democracy extends EventEmitter {
    * @param  {String} channel Channel name (can't be 'hello', 'vote', 'leader', or 'subscribe').
    * @return {Democracy}
    */
-  subscribe(channel): this {
+  // TODO: use channel type instead?
+  subscribe(channel: string): this {
     // Add the channel to this node.
     this.options.channels.push(channel);
 
@@ -291,7 +293,7 @@ class Democracy extends EventEmitter {
    * @param  {Mixed} msg     Data to send.
    * @return {Democracy}
    */
-  publish(channel, msg): this {
+  publish(channel: string, msg: any): this {
     // Loop through all nodes and send the message to ones that are subscribed.
     const ids = Object.keys(this._nodes);
     for (let i = 0; i < ids.length; i += 1) {
@@ -309,7 +311,7 @@ class Democracy extends EventEmitter {
    * @param {data} data Node data to setup.
    * @return {Democracy}
    */
-  private _addNodeToList(data): this {
+  private _addNodeToList(data: NodeInfo): this {
     // Add the node to the list.
     this._nodes[data.id] = {
       id: data.id,
@@ -322,10 +324,10 @@ class Democracy extends EventEmitter {
     };
 
     // Add this to the peers list.
-    const source = data.source.split(':');
+    const source = this._parseAddress(data.source);
     const index = this.options.peers.findIndex(p => p[0] === source[0] && p[1] === source[1]);
     if (index < 0) {
-      this.options.peers.push(data.source.split(':'));
+      this.options.peers.push(source);
     }
 
     // Emit that this node has been added.
@@ -339,6 +341,7 @@ class Democracy extends EventEmitter {
    * @param  {Object} msg Data received.
    * @return {Democracy}
    */
+  // TODO: types for this
   processEvent(msg): this {
     const data = this.decodeMsg(msg);
 
@@ -557,7 +560,7 @@ class Democracy extends EventEmitter {
 
   /**
    * Get the list of current nodes, including this one.
-   * @return {Object} All nodes.
+   * @return {NodeInfoMap} All nodes.
    */
   nodes(): NodeInfoMap {
     const nodes = {};
@@ -593,7 +596,7 @@ class Democracy extends EventEmitter {
 
   /**
    * Find our current fearless leader.
-   * @return {Object} Current leader.
+   * @return {NodeInfo} Current leader.
    */
   leader(): NodeInfo {
     const nodes = this.nodes();
@@ -621,9 +624,9 @@ class Democracy extends EventEmitter {
   /**
    * Safely decode a Buffer message received over UDP.
    * @param  {Buffer} msg Received data.
-   * @return {Object}     Parsed data.
+   * @return {any}     Parsed data.
    */
-  decodeMsg(msg): any {
+  decodeMsg(msg: Buffer): any {
     try {
       return JSON.parse(decoder.write(msg));
     } catch (e) {
