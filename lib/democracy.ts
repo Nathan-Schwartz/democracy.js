@@ -1,6 +1,6 @@
 /**
  * democracy.js
- * Copyright (c) 2016 - 2019, GoldFire Studios, Inc.
+ * Copyright (c) 2016 - 2021, GoldFire Studios, Inc.
  * http://goldfirestudios.com
  */
 
@@ -9,51 +9,29 @@ import { createSocket, Socket } from 'dgram';
 import { EventEmitter } from  'events';
 import { StringDecoder } from  'string_decoder';
 
+import {
+  NodeAddress,
+  NodeId,
+  NodeState,
+  NodeInfo,
+  NodeInfoMap,
+  NodeAddressTuple,
+  DemocracyOptions,
+  DemocracyDefaultedOptions,
+  SendExtra
+} from './types';
+
 // Create the string decoder.
 const decoder = new StringDecoder('utf8');
 
-type NodeAddress = string; // Example: 0.0.0.0:12345
-type NodeId = string;
-type NodeState = 'removed' | 'citizen' | 'leader';
 
-type NodeInfo = {
-  id: NodeId,
-  weight: number,
-  state: NodeState,
-  channels: Array<string>,
-  last: number, // ms timestamp
-  voters: Array<NodeId>,
-  source: NodeAddress,
-  disconnected?: NodeJS.Timer,
-}
+// TODO: write a "stop" method
+// TODO: make sure new higher weight nodes are elected upon joining the cluster
+// - this might make things more brittle if a node keeps dropping
+// TODO: setup typescript linting
+// TODO: setup linting script
+// TODO: setup linting + typing CI
 
-type NodeInfoMap = { [id: NodeId]: NodeInfo };
-
-type AddressTuple = [ domain: string, port: number];
-
-type DemocracyOptions = {
-  interval?: number,
-  timeout?: number,
-  maxPacketSize?: number,
-  source?: NodeAddress,
-  peers?: Array<NodeAddress>,
-  weight?: number
-  id?: NodeId,
-  channels?: Array<string>
-}
-type DemocracyDefaultedOptions = {
-  interval: number,
-  timeout: number,
-  maxPacketSize: number,
-  source: AddressTuple,
-  peers: Array<AddressTuple>,
-  weight: number
-  id: NodeId,
-  channels: Array<string>
-}
-
-
-type SendExtra = { candidate?: string, channel?: string };
 
 /**
  * Setup the base Democracy class that handles all of the methods.
@@ -110,14 +88,8 @@ class Democracy extends EventEmitter {
     this.start();
   }
 
-  private _parseAddress(address: NodeAddress): AddressTuple {
+  private _parseAddress(address: NodeAddress): NodeAddressTuple {
     const parts: Array<string> = address.split(':');
-
-    if (parts.length !== 2) {
-      // TODO: hide behind strict flag?
-      throw new Error('Peers and sources are expected to be in the format of <ip>:<port>');
-    }
-
     return [parts[0], Number(parts[1])];
   }
 
@@ -307,7 +279,7 @@ class Democracy extends EventEmitter {
   }
 
   /**
-   * Add a new node's data to the list (internal method).
+   * Add a new node's data to the internal node list
    * @param {data} data Node data to setup.
    * @return {Democracy}
    */
@@ -341,10 +313,11 @@ class Democracy extends EventEmitter {
    * @param  {Object} msg Data received.
    * @return {Democracy}
    */
-  // TODO: types for this
+  // TODO: write types for this
   processEvent(msg): this {
     const data = this.decodeMsg(msg);
 
+    // TODO: add more explicit docs
     // Check if this is a chunk and put in the store.
     if (data && data.chunk && data.id) {
       // Add the chunk to the buffer.
@@ -376,7 +349,7 @@ class Democracy extends EventEmitter {
       return this;
     }
 
-    // Validate the data.
+    // Noop if empty payload or we sent the message
     if (!data || data.id === this._id) {
       return this;
     }
@@ -451,16 +424,16 @@ class Democracy extends EventEmitter {
   }
 
   /**
-   * Check if a unanimous decision has been reached by the active nodes.
+   * Check if the decision to remove a node has been made unanimously by the active, healthy nodes.
    * @param  {String} candidate ID of the candidate to be removed.
    * @return {Democracy}
    */
   checkBallots(candidate): this {
     const node = this._nodes[candidate];
     const {state} = node;
-    let numVoters = 0;
+    let numVoters = 0; // This is the number of votes we need to achieve consensus
 
-    // Count the number of voters that haven't been marked for election.
+    // Count how many nodes are healthy
     for (let i = 0; i < Object.keys(this._nodes).length; i += 1) {
       if (this._nodes[i] && !this._nodes[i].voters.length) {
         numVoters += 1;
@@ -510,7 +483,7 @@ class Democracy extends EventEmitter {
     let newLeader;
 
     // Elect a new leader based on highest weight.
-    // Each server should always elect the same leader.
+    // Each server should always elect the same leader (ignoring any network partitions)
     Object.keys(nodes).forEach((id) => {
       if (nodes[id] && nodes[id].weight > highestWeight && nodes[id].state !== 'removed') {
         highestWeight = nodes[id].weight;
@@ -523,7 +496,7 @@ class Democracy extends EventEmitter {
       this.resign();
     }
 
-    // Elect our new benevolent dictator for life...of process.
+    // Elect our new benevolent dictator for life...of process (unless a new node with higher weight joins) // TODO: is this true?
     if (newLeader === this._id) {
       if (this._state !== 'leader') {
         this._state = 'leader';
@@ -587,7 +560,7 @@ class Democracy extends EventEmitter {
       weight: this._weight,
       state: this._state,
       channels: this.options.channels,
-      voters: [], // Empty because we can't know if we're being voted out // TODO: Check if true
+      voters: [], // TODO: this is a change but i don't think it is a breaking one
       source: this.options.source,
     };
 

@@ -21,7 +21,8 @@
   },
   "scripts": {
     "release": "VERSION=`printf 'v' && node -e 'console.log(require(\"./package.json\").version)'` && git tag $VERSION && git push && git push origin $VERSION && npm publish",
-    "build": "tsc"
+    "build": "tsc",
+    "lint": "eslint ./lib/democracy.ts"
   },
   "main": "./dist/democracy.js",
   "types": "./dist/democracy.d.ts",
