@@ -27,8 +27,6 @@ const decoder = new StringDecoder('utf8');
 // TODO: write a "stop" method
 // TODO: make sure new higher weight nodes are elected upon joining the cluster
 // - this might make things more brittle if a node keeps dropping
-// TODO: setup typescript linting
-// TODO: setup linting script
 // TODO: setup linting + typing CI
 
 /**
