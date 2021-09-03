@@ -22,7 +22,7 @@
   "scripts": {
     "release": "VERSION=`printf 'v' && node -e 'console.log(require(\"./package.json\").version)'` && git tag $VERSION && git push && git push origin $VERSION && npm publish",
     "build": "tsc",
-    "lint": "eslint ./lib/democracy.ts"
+    "lint": "eslint ./lib/"
   },
   "main": "./dist/democracy.js",
   "types": "./dist/democracy.d.ts",
@@ -32,9 +32,12 @@
   },
   "devDependencies": {
     "@types/node": "^16.7.10",
-    "eslint": "5.9.*",
-    "eslint-config-airbnb-base": "13.1.*",
-    "eslint-plugin-import": "2.14.*",
+    "@typescript-eslint/eslint-plugin": "^4.30.0",
+    "@typescript-eslint/parser": "^4.30.0",
+    "eslint": "^7.32.0",
+    "eslint-config-airbnb-base": "^14.2.1",
+    "eslint-config-airbnb-typescript": "^14.0.0",
+    "eslint-plugin-import": "^2.24.2",
     "typescript": "^4.4.2"
   },
   "engines": [

@@ -11,7 +11,7 @@ export type NodeInfo = {
   voters: Array<NodeId>,
   source: NodeAddress,
   disconnected?: NodeJS.Timer,
-}
+};
 
 export type NodeInfoMap = { [id: NodeId]: NodeInfo };
 
@@ -26,7 +26,7 @@ export type DemocracyOptions = {
   weight?: number
   id?: NodeId,
   channels?: Array<string>,
-}
+};
 export type DemocracyDefaultedOptions = {
   interval: number,
   timeout: number,
@@ -36,7 +36,7 @@ export type DemocracyDefaultedOptions = {
   weight: number,
   id: NodeId,
   channels: Array<string>,
-}
+};
 
 export type SendExtra = {
   candidate?: string,

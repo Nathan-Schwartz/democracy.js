@@ -5,9 +5,9 @@
  */
 
 import shortid from 'shortid';
-import { createSocket, Socket } from 'dgram';
-import { EventEmitter } from  'events';
-import { StringDecoder } from  'string_decoder';
+import {createSocket, Socket} from 'dgram';
+import {EventEmitter} from 'events';
+import {StringDecoder} from 'string_decoder';
 
 import {
   NodeAddress,
@@ -18,12 +18,11 @@ import {
   NodeAddressTuple,
   DemocracyOptions,
   DemocracyDefaultedOptions,
-  SendExtra
+  SendExtra,
 } from './types';
 
 // Create the string decoder.
 const decoder = new StringDecoder('utf8');
-
 
 // TODO: write a "stop" method
 // TODO: make sure new higher weight nodes are elected upon joining the cluster
@@ -32,19 +31,24 @@ const decoder = new StringDecoder('utf8');
 // TODO: setup linting script
 // TODO: setup linting + typing CI
 
-
 /**
  * Setup the base Democracy class that handles all of the methods.
  */
 class Democracy extends EventEmitter {
   private _nodes: NodeInfoMap;
+
   private _id: NodeId;
+
   private _weight: number;
+
   private _state: NodeState;
+
   private _chunks: Object; // TODO: specify
-  private _hadElection: boolean
+
+  private _hadElection: boolean;
 
   options: DemocracyDefaultedOptions;
+
   socket: Socket;
 
   /**
@@ -70,12 +74,11 @@ class Democracy extends EventEmitter {
       timeout: options.timeout || 3000,
       maxPacketSize: options.maxPacketSize || 508,
       source: this._parseAddress(options.source || '0.0.0.0:12345'),
-      peers: (options.peers || []).map(a => this._parseAddress(a)),
+      peers: (options.peers || []).map((a) => this._parseAddress(a)),
       weight: options.weight || Math.random() * Date.now(),
       id: options.id || shortid.generate(),
       channels: options.channels || [],
     };
-
 
     // Generate the details about this node to be sent between nodes.
     this._id = this.options.id;
@@ -164,11 +167,11 @@ class Democracy extends EventEmitter {
       state?: NodeState,
       channels?: Array<string>,
       extra?: SendExtra
-    }
+    };
     const data: Payload = {
       event,
       id: this._id,
-      source: `${this.options.source[0]}:${this.options.source[1]}`
+      source: `${this.options.source[0]}:${this.options.source[1]}`,
     };
 
     if (event === 'vote') {
@@ -208,7 +211,7 @@ class Democracy extends EventEmitter {
     }
 
     // Data must be sent as a Buffer over the UDP socket.
-    chunks = chunks.map(chunk => Buffer.from(chunk));
+    chunks = chunks.map((chunk) => Buffer.from(chunk));
 
     // Loop through each connect node and send the packet over.
     for (let x = 0; x < chunks.length; x += 1) {
@@ -297,7 +300,7 @@ class Democracy extends EventEmitter {
 
     // Add this to the peers list.
     const source = this._parseAddress(data.source);
-    const index = this.options.peers.findIndex(p => p[0] === source[0] && p[1] === source[1]);
+    const index = this.options.peers.findIndex((p) => p[0] === source[0] && p[1] === source[1]);
     if (index < 0) {
       this.options.peers.push(source);
     }
@@ -458,7 +461,7 @@ class Democracy extends EventEmitter {
 
         // Remove from the nodes/peers.
         const source = this._parseAddress(node.source);
-        const index = this.options.peers.findIndex(p => p[0] === source[0] && p[1] === source[1]);
+        const index = this.options.peers.findIndex((p) => p[0] === source[0] && p[1] === source[1]);
         if (index >= 0) {
           this.options.peers.splice(index, 1);
         }
